@@ -4,6 +4,7 @@ import Navbar from "../components/layout/Navbar";
 import Sidebar from "../components/layout/Sidebar";
 import Product from "../components/ui/Product";
 import RevenueChart from "../components/ui/RevenueChart";
+import axios from 'axios';
 
 const PRODUCTS = [
   {
@@ -78,7 +79,6 @@ const roleColor = {
 const getRoleVN = (role) => {
   switch (role) {
     case "OWNER": return "Chủ";
-    case "MANAGER": return "Quản lý";
     case "STAFF": return "Nhân viên";
     case "CUSTOMER": return "Khách hàng";
     default: return role;
@@ -88,8 +88,10 @@ const getRoleVN = (role) => {
 const Management = () => {
   const [selected, setSelected] = useState("home");
   const [employees, setEmployees] = useState([]);
+  const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("ALL");
   const [newEmployee, setNewEmployee] = useState({
     name: '',
     phone: '',
@@ -97,6 +99,10 @@ const Management = () => {
     role: 'STAFF'
   });
   const [editingEmployee, setEditingEmployee] = useState(null);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: '', price: '', stock: '' });
+  const [newProductImage, setNewProductImage] = useState(null);
+  const [productLoading, setProductLoading] = useState(false);
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -105,6 +111,7 @@ const Management = () => {
         const response = await res.json();
         if (response.success && response.data) {
           setEmployees(response.data);
+          setFilteredEmployees(response.data);
         }
       } catch (error) {
         console.error("Error fetching employees:", error);
@@ -115,6 +122,15 @@ const Management = () => {
 
     fetchEmployees();
   }, []);
+
+  useEffect(() => {
+    if (selectedRole === "ALL") {
+      setFilteredEmployees(employees);
+    } else {
+      const filtered = employees.filter(emp => emp.role === selectedRole);
+      setFilteredEmployees(filtered);
+    }
+  }, [selectedRole, employees]);
 
   const handleAddEmployee = async (e) => {
     e.preventDefault();
@@ -181,6 +197,31 @@ const Management = () => {
     }
   };
 
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    setProductLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('product', JSON.stringify({
+        name: newProduct.name,
+        price: Number(newProduct.price),
+        stock: Number(newProduct.stock)
+      }));
+      if (newProductImage) {
+        formData.append('image', newProductImage);
+      }
+      await axios.post('http://localhost:8080/api/products', formData);
+      setShowAddProduct(false);
+      setNewProduct({ name: '', price: '', stock: '' });
+      setNewProductImage(null);
+      // TODO: reload lại danh sách sản phẩm nếu cần
+    } catch (err) {
+      alert('Có lỗi khi thêm sản phẩm!');
+    } finally {
+      setProductLoading(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#fff" }}>
       <Navbar />
@@ -228,46 +269,67 @@ const Management = () => {
           )}
           {selected === "staff" && (
             <div style={{ maxWidth: 900, margin: "0 auto", position: "relative" }}>
-              <div style={{ position: "absolute", right: 0, top: 0 }}>
-                <span
-                  style={{
-                    fontSize: 36,
-                    color: "#222",
-                    cursor: "pointer",
-                    userSelect: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                  title="Thêm nhân viên"
-                >
-                  <span 
-                    className="btn-add" 
-                    style={{ 
-                      display: "inline-block", 
-                      cursor: "pointer", 
-                      marginRight: 35,
-                      transition: 'transform 0.2s',
-                      transform: showAddForm && !editingEmployee ? 'rotate(45deg)' : 'none'
-                    }}
-                    onClick={() => {
-                      if (showAddForm) {
-                        setShowAddForm(false);
-                        setEditingEmployee(null);
-                        setNewEmployee({ name: '', phone: '', address: '', role: 'STAFF' });
-                      } else {
-                        setShowAddForm(true);
-                        setEditingEmployee(null);
-                        setNewEmployee({ name: '', phone: '', address: '', role: 'STAFF' });
-                      }
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <label style={{ fontWeight: 500 }}>Lọc theo vai trò:</label>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      border: '1px solid #ddd',
+                      fontSize: 16,
+                      cursor: 'pointer'
                     }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" fill="currentColor" className="bi bi-person-plus-fill" viewBox="0 0 16 16">
-                      <path d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
-                      <path fillRule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
-                    </svg>
+                    <option value="ALL">Tất cả</option>
+                    <option value="OWNER">Chủ</option>
+                    <option value="STAFF">Nhân viên</option>
+                    <option value="CUSTOMER">Khách hàng</option>
+                  </select>
+                </div>
+                <div>
+                  <span
+                    style={{
+                      fontSize: 36,
+                      color: "#222",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                    title="Thêm nhân viên"
+                  >
+                    <span 
+                      className="btn-add" 
+                      style={{ 
+                        display: "inline-block", 
+                        cursor: "pointer", 
+                        marginRight: 35,
+                        transition: 'transform 0.2s',
+                        transform: showAddForm && !editingEmployee ? 'rotate(45deg)' : 'none'
+                      }}
+                      onClick={() => {
+                        if (showAddForm) {
+                          setShowAddForm(false);
+                          setEditingEmployee(null);
+                          setNewEmployee({ name: '', phone: '', address: '', role: 'STAFF' });
+                        } else {
+                          setShowAddForm(true);
+                          setEditingEmployee(null);
+                          setNewEmployee({ name: '', phone: '', address: '', role: 'STAFF' });
+                        }
+                      }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" fill="currentColor" className="bi bi-person-plus-fill" viewBox="0 0 16 16">
+                        <path d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
+                        <path fillRule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
+                      </svg>
+                    </span>
                   </span>
-                </span>
+                </div>
               </div>
               {loading ? (
                 <div style={{ textAlign: 'center', color: '#888', fontSize: 18, marginTop: 24 }}>Đang tải...</div>
@@ -285,7 +347,7 @@ const Management = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {employees.map((emp) => (
+                      {filteredEmployees.map((emp) => (
                         <tr key={emp.id} style={{ borderBottom: "1px solid #eee", height: 56 }}>
                           <td style={{ fontWeight: 700, padding: 8 }}>{emp.id.substring(0, 8)}...</td>
                           <td style={{ padding: 8 }}>{emp.name}</td>
@@ -463,7 +525,7 @@ const Management = () => {
             </div>
           )}
           {selected === "warehouse" && (
-            <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', position: 'relative' }}>
               <h1 style={{ textAlign: 'center', fontWeight: 'bold', letterSpacing: 2, fontSize: 36, margin: '24px 0 32px 0' }}>
                 KHO HÀNG
               </h1>
@@ -485,6 +547,106 @@ const Management = () => {
                   />
                 ))}
               </div>
+              <button
+                onClick={() => setShowAddProduct(true)}
+                style={{
+                  position: 'fixed',
+                  bottom: 32,
+                  right: 32,
+                  width: 60,
+                  height: 60,
+                  borderRadius: '50%',
+                  background: '#1976d2',
+                  color: '#fff',
+                  fontSize: 36,
+                  border: 'none',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  cursor: 'pointer',
+                  zIndex: 1000
+                }}
+                title="Thêm sản phẩm mới"
+              >
+                +
+              </button>
+              {showAddProduct && (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  width: '100vw',
+                  height: '100vh',
+                  background: 'rgba(0,0,0,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 2000
+                }}>
+                  <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 350, boxShadow: '0 2px 16px rgba(0,0,0,0.12)' }}>
+                    <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 22 }}>Thêm sản phẩm mới</h2>
+                    <form onSubmit={handleAddProduct}>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontWeight: 500 }}>Tên sản phẩm</label>
+                        <input
+                          type="text"
+                          value={newProduct.name}
+                          onChange={e => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
+                          required
+                          style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontWeight: 500 }}>Giá (VND)</label>
+                        <input
+                          type="number"
+                          value={newProduct.price}
+                          onChange={e => setNewProduct(prev => ({ ...prev, price: e.target.value }))}
+                          required
+                          min={0}
+                          style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontWeight: 500 }}>Số lượng nhập</label>
+                        <input
+                          type="number"
+                          value={newProduct.stock}
+                          onChange={e => setNewProduct(prev => ({ ...prev, stock: e.target.value }))}
+                          required
+                          min={0}
+                          style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontWeight: 500 }}>Ảnh sản phẩm</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => setNewProductImage(e.target.files[0])}
+                          required
+                          style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddProduct(false)}
+                          style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', fontSize: 16, cursor: 'pointer' }}
+                          disabled={productLoading}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="submit"
+                          style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#1976d2', color: '#fff', fontSize: 16, cursor: 'pointer' }}
+                          disabled={productLoading}
+                        >
+                          {productLoading ? 'Đang lưu...' : 'Thêm sản phẩm'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {selected === "revenue" && (

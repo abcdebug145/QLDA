@@ -3,7 +3,9 @@ package com.project.court88be.controller;
 import com.project.court88be.dto.ApiResponse;
 import com.project.court88be.dto.BookingRequest;
 import com.project.court88be.dto.BookingResponse;
+import com.project.court88be.dto.AllDataResponse;
 import com.project.court88be.service.BookingService;
+import com.project.court88be.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BookingController {
     private final BookingService bookingService;
+    private final OrderService orderService;
 
     @GetMapping
     public ApiResponse<List<BookingResponse>> getAllBookings() {
@@ -62,6 +65,20 @@ public class BookingController {
                 .success(true)
                 .message("Cập nhật trạng thái đặt sân thành công")
                 .data(bookingService.updateBookingStatus(bookingId, status))
+                .build();
+    }
+
+    @GetMapping("/all")
+    public ApiResponse<AllDataResponse> getAllData() {
+        AllDataResponse response = AllDataResponse.builder()
+                .orders(orderService.getAllOrders())
+                .bookings(bookingService.getAllBookings())
+                .build();
+        
+        return ApiResponse.<AllDataResponse>builder()
+                .success(true)
+                .message("Lấy tất cả dữ liệu thành công")
+                .data(response)
                 .build();
     }
 } 

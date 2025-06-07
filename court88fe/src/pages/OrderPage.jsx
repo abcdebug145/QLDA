@@ -108,7 +108,7 @@ const OrderPage = () => {
   // Gộp các sản phẩm cùng đơn hàng vào 1 dòng
   orders.forEach(o => {
     const date = o.createdAt ? (new Date(o.createdAt).toISOString().split('T')[0]) : '';
-    const status = o.status === 'APPROVED' ? 'Đã duyệt' : (o.status === 'PENDING' ? 'Đang duyệt' : (o.status === 'ONGOING' ? 'Đang giao hàng' : 'Đang chờ'));
+    const status = o.status === 'APPROVED' ? 'Đã duyệt' : (o.status === 'PENDING' ? 'Đang chờ' : (o.status === 'ONGOING' ? 'Đang giao hàng' : 'Đã hoàn thành'));
     const paid = o.status === 'APPROVED' ? o.total : 0;
     const productList = (o.products || []).map(p => `${p.name} x${p.quantity}`).join(', ');
     allRows.push({
@@ -138,7 +138,6 @@ const OrderPage = () => {
               <th style={{ padding: 12, textAlign: "left" }}>Chi tiết</th>
               <th style={{ padding: 12, textAlign: "right" }}>Tổng tiền</th>
               <th style={{ padding: 12, textAlign: "center" }}>Trạng thái</th>
-              <th style={{ padding: 12, textAlign: "center" }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -166,27 +165,6 @@ const OrderPage = () => {
                     fontWeight: 600,
                     fontSize: 15
                   }}>{row.status}</span>
-                </td>
-                <td style={{ padding: 12, textAlign: "center" }}>
-                  {row.type === 'product' && (
-                    <button
-                      style={{
-                        background: "#1976d2",
-                        color: "white",
-                        border: "none",
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        fontWeight: 600
-                      }}
-                      onClick={() => {
-                        // Xử lý khi click vào nút xem chi tiết
-                        console.log("Xem chi tiết đơn hàng:", row);
-                      }}
-                    >
-                      Xem chi tiết
-                    </button>
-                  )}
                 </td>
               </tr>
             ))}

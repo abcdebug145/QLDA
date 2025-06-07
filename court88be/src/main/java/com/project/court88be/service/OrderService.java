@@ -119,4 +119,11 @@ public class OrderService {
         order.setStatus(status);
         return convertToResponse(orderRepository.save(order));
     }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders() {
+        return orderRepository.findAll().stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
 } 

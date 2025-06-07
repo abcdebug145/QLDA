@@ -24,16 +24,23 @@ public class ShiftController {
     public ApiResponse<List<ShiftResponse>> registerMultipleShifts(
             @PathVariable String phone,
             @RequestBody RegisterShiftsRequest request) {
-        Map<LocalDate, List<ShiftType>> shifts = request.getShifts().entrySet().stream()
-                .collect(Collectors.toMap(
-                        entry -> LocalDate.parse(entry.getKey()),
-                        Map.Entry::getValue
-                ));
-        return ApiResponse.<List<ShiftResponse>>builder()
-                .success(true)
-                .message("Đăng ký ca làm việc thành công")
-                .data(shiftService.registerMultipleShifts(phone, shifts))
-                .build();
+        try {
+            Map<LocalDate, List<ShiftType>> shifts = request.getShifts().entrySet().stream()
+                    .collect(Collectors.toMap(
+                            entry -> LocalDate.parse(entry.getKey()),
+                            Map.Entry::getValue
+                    ));
+            return ApiResponse.<List<ShiftResponse>>builder()
+                    .success(true)
+                    .message("Đăng ký ca làm việc thành công")
+                    .data(shiftService.registerMultipleShifts(phone, shifts))
+                    .build();
+        } catch (RuntimeException e) {
+            return ApiResponse.<List<ShiftResponse>>builder()
+                    .success(false)
+                    .message(e.getMessage())
+                    .build();
+        }
     }
 
     @GetMapping("/user/{phone}")

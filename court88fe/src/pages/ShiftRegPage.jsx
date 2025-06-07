@@ -67,43 +67,50 @@ const ShiftRegPage = () => {
         return;
       }
 
-      // Chuyển đổi dữ liệu từ registeredShifts sang format API yêu cầu
-      const dates = Object.keys(registeredShifts);
-      let response;
+      // Lấy danh sách ca đã đăng ký từ API
+      const userResponse = await axios.get(`/api/shifts/user/${userData.data.phone}`);
+      const existingShifts = userResponse.data.success ? userResponse.data.data.reduce((acc, shift) => {
+        const date = shift.date.split('T')[0];
+        if (!acc[date]) {
+          acc[date] = [];
+        }
+        acc[date].push(shift.type.toLowerCase());
+        return acc;
+      }, {}) : {};
 
-      if (dates.length === 1) {
-        // Nếu chỉ có 1 ngày, gửi request đơn lẻ
-        const date = dates[0];
-        const shiftTypes = registeredShifts[date].map(shift => shift.toUpperCase());
-        
-        response = await axios.post(`/api/shifts/register/${userData.data.phone}`, {
-          type: shiftTypes[0],
-          date: date,
-          active: true
-        });
-      } else {
-        // Nếu có nhiều ngày, gửi request batch
-        const formattedShifts = {};
-        dates.forEach(date => {
-          formattedShifts[date] = registeredShifts[date].map(shift => shift.toUpperCase());
-        });
+      // Tìm những ca mới được đăng ký
+      const newShifts = {};
+      Object.keys(registeredShifts).forEach(date => {
+        const newShiftsForDate = registeredShifts[date].filter(shift => 
+          !existingShifts[date] || !existingShifts[date].includes(shift)
+        );
+        if (newShiftsForDate.length > 0) {
+          newShifts[date] = newShiftsForDate.map(shift => shift.toUpperCase());
+        }
+      });
 
-          response = await axios.post(`/api/shifts/register/${userData.data.phone}`, {
-          shifts: formattedShifts
-        });
+      // Nếu không có ca mới nào được đăng ký
+      if (Object.keys(newShifts).length === 0) {
+        showPopup('Không có ca mới nào được đăng ký!', 'info');
+        return;
       }
+
+      // Gửi request đăng ký ca mới
+      const response = await axios.post(`/api/shifts/register/${userData.data.phone}`, {
+        shifts: newShifts
+      });
 
       if (response.data.success) {
         showPopup('Đăng ký ca làm việc thành công!', 'success');
         // Refresh lại dữ liệu sau khi đăng ký thành công
-        const userResponse = await axios.get(`/api/shifts/user/${userData.data.phone}`);
-        if (userResponse.data.success) {
-          const formattedShifts = userResponse.data.data.reduce((acc, shift) => {
+        const updatedResponse = await axios.get(`/api/shifts/user/${userData.data.phone}`);
+        if (updatedResponse.data.success) {
+          const formattedShifts = updatedResponse.data.data.reduce((acc, shift) => {
             const date = shift.date.split('T')[0];
             if (!acc[date]) {
               acc[date] = [];
             }
-            acc[date].push(shift.shiftType.toLowerCase());
+            acc[date].push(shift.type.toLowerCase());
             return acc;
           }, {});
           

@@ -1,12 +1,13 @@
 package com.project.court88be.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.Builder;
+import lombok.*;
 
 @Data
 @Entity
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
