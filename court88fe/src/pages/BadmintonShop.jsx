@@ -1,104 +1,136 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "../components/layout/Navbar";
 import Product from "../components/ui/Product";
 import ScanQrPopup from "../components/ui/ScanQrPopup";
 import SuccessPopup from "../components/ui/SuccessPopup";
-
-const products = [
-  {
-    image: "/yonex-grip.png",
-    name: "Quấn cán vợt Yonex",
-    price: "40.000",
-  },
-  {
-    image: "/yonex-tape.png",
-    name: "Cốt cán Yonex",
-    price: "150.000",
-  },
-  {
-    image: "/yonex-socks.png",
-    name: "Tất Yonex",
-    price: "80.000",
-  },
-  {
-    image: "/yonex-bag.png",
-    name: "Túi Yonex",
-    price: "495.000",
-  },
-  {
-    image: "/yonex-shuttle.png",
-    name: "Cầu Yonex",
-    price: "1.050.000",
-  },
-  {
-    image: "/bg65ti.png",
-    name: "BG 65 Titanium",
-    price: "150.000",
-  },
-  {
-    image: "/exbolt65.png",
-    name: "Exbolt 65",
-    price: "200.000",
-  },
-  {
-    image: "/bg80power.png",
-    name: "BG 80 Power",
-    price: "200.000",
-  },
-  {
-    image: "/bg80.png",
-    name: "BG 80",
-    price: "180.000",
-  },
-  {
-    image: "/bg66u.png",
-    name: "BG 66 Ultimax",
-    price: "180.000",
-  },
-];
-
-function parsePrice(str) {
-  return Number(str.replace(/\./g, ""));
-}
+import axios from 'axios';
 
 const SHIPPING_FEE = 20000;
 
+function parsePrice(str) {
+  if (typeof str === 'number') return str;
+  return Number(String(str).replace(/\./g, ""));
+}
+
 const BadmintonShop = () => {
-  // Mảng số lượng từng sản phẩm trong giỏ
-  const [cart, setCart] = useState(Array(products.length).fill(0));
+  const [products, setProducts] = useState([]);
+  const [cart, setCart] = useState([]); // [{productId, quantity, ...}, ...]
   const [showCartModal, setShowCartModal] = useState(false);
   const [showQrPopup, setShowQrPopup] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('online'); // 'online' hoặc 'cod'
+  const [paymentMethod, setPaymentMethod] = useState('online');
+  const [loadingCart, setLoadingCart] = useState(false);
+  // Thay đổi: userId và phone dùng useState, đồng bộ từ localStorage
+  const [userId, setUserId] = useState(null);
+  const [phone, setPhone] = useState('');
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        const userData = user.data || user;
+        setPhone(userData.phone || '');
+        setUserId(userData.id || userData.userId || null);
+        console.log('userId set:', userData.id || userData.userId || null);
+      } catch {
+        setPhone('');
+        setUserId(null);
+      }
+    } else {
+      setPhone('');
+      setUserId(null);
+    }
+  }, []);
+
+  // Fetch sản phẩm từ backend
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await axios.get('http://localhost:8080/api/products');
+        if (res.data.success) {
+          setProducts(res.data.data);
+        }
+      } catch {
+        setProducts([]);
+      }
+    };
+    fetchProducts();
+  }, []);
+
+  // Fetch cart từ backend khi có user
+  useEffect(() => {
+    const fetchCart = async () => {
+      if (!userId) return;
+      setLoadingCart(true);
+      try {
+        const res = await axios.get(`http://localhost:8080/api/cart?userId=${userId}`);
+        if (res.data.success) {
+          setCart(res.data.data.items || []);
+        } else {
+          setCart([]);
+        }
+      } catch {
+        setCart([]);
+      } finally {
+        setLoadingCart(false);
+      }
+    };
+    fetchCart();
+  }, [userId]);
+
+  // Helper: lấy quantity của productId trong cart
+  const getCartQty = (productId) => {
+    const item = cart.find(i => i.productId === productId);
+    return item ? item.quantity : 0;
+  };
 
   // Tổng số sản phẩm trong giỏ
-  const totalInCart = cart.reduce((a, b) => a + b, 0);
-
+  const totalInCart = cart.reduce((a, b) => a + (b.quantity || 0), 0);
   // Tính tổng tiền sản phẩm
-  const totalPrice = cart.reduce((sum, qty, idx) => sum + qty * parsePrice(products[idx].price), 0);
+  const totalPrice = cart.reduce((sum, item) => {
+    const prod = products.find(p => p.id === item.productId);
+    return sum + (item.quantity * (prod ? parsePrice(prod.price) : 0));
+  }, 0);
   // Tổng tiền thanh toán (bao gồm phí ship nếu có sản phẩm)
   const totalWithShipping = totalInCart > 0 ? totalPrice + SHIPPING_FEE : 0;
 
-  // Lấy số điện thoại từ localStorage
-  let phone = '';
-  const userStr = localStorage.getItem('user');
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      const userData = user.data || user;
-      phone = userData.phone || '';
-    } catch { /* ignore parse error */ }
-  }
-
   // Xử lý thêm vào giỏ
-  const handleAddToCart = idx => {
-    setCart(q => q.map((v, i) => i === idx ? v + 1 : v));
+  const handleAddToCart = async (productId) => {
+    if (!userId) return alert('Bạn cần đăng nhập để mua hàng!');
+    console.log('userId khi thêm:', userId, 'productId:', productId);
+    try {
+      await axios.post('http://localhost:8080/api/cart/add', {
+        userId, // KHÔNG ép kiểu số
+        productId, // truyền nguyên string UUID
+        quantity: 1
+      });
+      // Lấy lại cart mới
+      const res = await axios.get(`http://localhost:8080/api/cart?userId=${userId}`);
+      if (res.data.success) setCart(res.data.data.items || []);
+    } catch (e) {
+      console.error('Lỗi khi thêm vào giỏ hàng:', e);
+      alert('Có lỗi khi thêm vào giỏ hàng!');
+    }
   };
 
-  // Xử lý loại bỏ hoặc giảm số lượng sản phẩm khỏi giỏ hàng
-  const handleRemoveFromCart = (idx) => {
-    setCart(q => q.map((v, i) => i === idx ? (v > 1 ? v - 1 : 0) : v));
+  const handleRemoveFromCart = async (productId) => {
+    if (!userId) return;
+    console.log('userId khi xóa:', userId, 'productId:', productId);
+    try {
+      await axios.post('http://localhost:8080/api/cart/update', {
+        userId, // KHÔNG ép kiểu số
+        productId, // truyền nguyên string UUID
+        quantity: -1
+      });
+      // Lấy lại cart mới
+      const res = await axios.get(`http://localhost:8080/api/cart?userId=${userId}`);
+      if (res.data.success) setCart(res.data.data.items || []);
+    } catch (e) {
+      console.error('Lỗi khi cập nhật giỏ hàng:', e);
+      alert('Có lỗi khi cập nhật giỏ hàng!');
+    }
   };
 
   // Xử lý khi bấm Thanh toán/Đặt Hàng
@@ -106,10 +138,12 @@ const BadmintonShop = () => {
     setShowCartModal(false);
     setTimeout(async () => {
       if (paymentMethod === 'cod') {
-        // Gọi API luôn nếu chọn COD
         try {
           const orderData = {
-            products: products.map((p, idx) => cart[idx] > 0 ? ({ name: p.name, quantity: cart[idx], price: parsePrice(p.price) }) : null).filter(Boolean),
+            products: cart.map(item => {
+              const prod = products.find(p => p.id === item.productId);
+              return prod ? ({ name: prod.name, quantity: item.quantity, price: parsePrice(prod.price) }) : null;
+            }).filter(Boolean),
             shippingFee: SHIPPING_FEE,
             total: totalWithShipping,
             phone
@@ -119,28 +153,27 @@ const BadmintonShop = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
           });
+          // Xóa cart trên backend
+          await axios.post(`http://localhost:8080/api/cart/clear?userId=${userId}`);
+          setCart([]);
           setShowSuccess(true);
         } catch {
           alert('Có lỗi khi gửi đơn hàng!');
         }
       } else {
-        // Online: mở popup QR như cũ
         setShowQrPopup(true);
       }
-    }, 200); // Đợi popup cũ đóng
-  };
-
-  // Xử lý upload file bill
-  const handleUpload = (file) => {
-    setUploadedFile(file);
+    }, 200);
   };
 
   // Xử lý xác nhận thanh toán thành công
   const handleQrConfirm = async () => {
     try {
-      // Gửi request đến /api/orders
       const orderData = {
-        products: products.map((p, idx) => cart[idx] > 0 ? ({ name: p.name, quantity: cart[idx], price: parsePrice(p.price) }) : null).filter(Boolean),
+        products: cart.map(item => {
+          const prod = products.find(p => p.id === item.productId);
+          return prod ? ({ name: prod.name, quantity: item.quantity, price: parsePrice(prod.price) }) : null;
+        }).filter(Boolean),
         shippingFee: SHIPPING_FEE,
         total: totalWithShipping,
         phone
@@ -150,6 +183,9 @@ const BadmintonShop = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
+      // Xóa cart trên backend
+      await axios.post(`http://localhost:8080/api/cart/clear?userId=${userId}`);
+      setCart([]);
       setShowQrPopup(false);
       setUploadedFile(null);
       setTimeout(() => {
@@ -160,6 +196,49 @@ const BadmintonShop = () => {
     }
   };
 
+  // Giao diện sản phẩm với nút +/- (chỉ hiển thị trên từng sản phẩm, không có box hóa đơn nổi sẵn)
+  const renderProductGrid = () => (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: 32,
+      justifyItems: 'center',
+      alignItems: 'start',
+      padding: '0 24px'
+    }}>
+      {products.map((p) => (
+        <div key={p.id || p.name} style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', padding: 16, width: 200, textAlign: 'center', position: 'relative' }}>
+          <Product
+            image={p.image}
+            name={p.name}
+            price={p.price}
+            hideAddToCart
+            renderQuantityControls={() => (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+                <button
+                  onClick={() => handleRemoveFromCart(p.id)}
+                  style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #1976d2', background: '#fff', color: '#1976d2', fontSize: 20, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={getCartQty(p.id) === 0 || loadingCart || !userId}
+                >-</button>
+                <span style={{ minWidth: 24, fontWeight: 600, fontSize: 18 }}>{getCartQty(p.id)}</span>
+                <button
+                  onClick={() => handleAddToCart(p.id)}
+                  style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #1976d2', background: '#1976d2', color: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  disabled={loadingCart || !userId}
+                >+</button>
+              </div>
+            )}
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  // Xử lý upload file QR (nếu có)
+  const handleUpload = (file) => {
+    setUploadedFile(file);
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
       <Navbar />
@@ -167,25 +246,9 @@ const BadmintonShop = () => {
         <h1 style={{ textAlign: 'center', fontWeight: 'bold', letterSpacing: 2, fontSize: 36, margin: '24px 0 32px 0' }}>
           PHỤ KIỆN CẦU LÔNG
         </h1>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 32,
-          justifyItems: 'center',
-          alignItems: 'start',
-          padding: '0 24px'
-        }}>
-          {products.map((p, idx) => (
-            <Product
-              key={p.name}
-              image={p.image}
-              name={p.name}
-              price={p.price}
-              onAddToCart={() => handleAddToCart(idx)}
-            />
-          ))}
-        </div>
+        {renderProductGrid()}
       </div>
+      {/* Nút mở hóa đơn (góc phải dưới) dạng icon với badge đỏ */}
       <button
         onClick={() => setShowCartModal(true)}
         style={{
@@ -200,10 +263,13 @@ const BadmintonShop = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 100,
+          zIndex: 1000,
           border: 'none',
-          cursor: 'pointer',
+          cursor: totalInCart === 0 ? 'not-allowed' : 'pointer',
+          opacity: totalInCart === 0 ? 0.6 : 1
         }}
+        disabled={totalInCart === 0}
+        title="Xem hóa đơn"
       >
         <img src="/cart.svg" alt="Giỏ hàng" style={{ width: 32, height: 32 }} />
         {totalInCart > 0 && (
@@ -225,8 +291,7 @@ const BadmintonShop = () => {
           }}>{totalInCart}</span>
         )}
       </button>
-
-      {/* Popup xác nhận giỏ hàng */}
+      {/* Popup xác nhận giỏ hàng/hóa đơn */}
       {showCartModal && (
         <div style={{
           position: 'fixed',
@@ -255,7 +320,7 @@ const BadmintonShop = () => {
               Xác nhận đơn hàng
             </div>
             <div style={{ width: '100%', marginBottom: 16 }}>
-              {cart.every(qty => qty === 0) ? (
+              {cart.length === 0 || cart.every(item => item.quantity === 0) ? (
                 <div style={{ color: '#888', textAlign: 'center', fontSize: 16 }}>Chưa có sản phẩm nào trong giỏ hàng.</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15 }}>
@@ -269,16 +334,19 @@ const BadmintonShop = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((p, idx) => (
-                      cart[idx] > 0 && (
-                        <tr key={p.name}>
-                          <td style={{ padding: 4 }}>{p.name}</td>
-                          <td style={{ textAlign: 'center', padding: 4 }}>{cart[idx]}</td>
-                          <td style={{ textAlign: 'right', padding: 4 }}>{p.price}VND</td>
-                          <td style={{ textAlign: 'right', padding: 4 }}>{(parsePrice(p.price) * cart[idx]).toLocaleString()}VND</td>
+                    {cart.map(item => {
+                      if (!item.quantity) return null;
+                      const prod = products.find(p => p.id === item.productId);
+                      if (!prod) return null;
+                      return (
+                        <tr key={prod.id}>
+                          <td style={{ padding: 4 }}>{prod.name}</td>
+                          <td style={{ textAlign: 'center', padding: 4 }}>{item.quantity}</td>
+                          <td style={{ textAlign: 'right', padding: 4 }}>{prod.price}VND</td>
+                          <td style={{ textAlign: 'right', padding: 4 }}>{(parsePrice(prod.price) * item.quantity).toLocaleString()}VND</td>
                           <td style={{ textAlign: 'center', padding: 4 }}>
                             <button
-                              onClick={() => handleRemoveFromCart(idx)}
+                              onClick={() => handleRemoveFromCart(prod.id)}
                               style={{
                                 background: 'none',
                                 border: 'none',
@@ -295,8 +363,8 @@ const BadmintonShop = () => {
                             </button>
                           </td>
                         </tr>
-                      )
-                    ))}
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     <tr style={{ fontWeight: 500, color: '#222', fontSize: 15 }}>
@@ -342,7 +410,7 @@ const BadmintonShop = () => {
               >
                 Đóng
               </button>
-              { !cart.every(qty => qty === 0) && (
+              { !cart.every(item => item.quantity === 0) && (
                 <button
                   style={{
                     background: '#4e6cf4',

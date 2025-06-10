@@ -1,15 +1,16 @@
 package com.project.court88be.service.impl;
 
-import com.project.court88be.service.FileStorageService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.project.court88be.service.FileStorageService;
 
 @Service
 public class FileStorageServiceImpl implements FileStorageService {
@@ -42,10 +43,15 @@ public class FileStorageServiceImpl implements FileStorageService {
     @Override
     public void deleteFile(String fileName) {
         try {
-            Path filePath = Paths.get(uploadDir).resolve(fileName);
+            // Nếu fileName có prefix uploads/ thì bỏ đi để lấy đúng tên file
+            String cleanFileName = fileName;
+            if (fileName.startsWith("uploads/")) {
+                cleanFileName = fileName.substring("uploads/".length());
+            }
+            Path filePath = Paths.get(uploadDir).resolve(cleanFileName);
             Files.deleteIfExists(filePath);
         } catch (IOException e) {
             throw new RuntimeException("Không thể xóa file: " + e.getMessage());
         }
     }
-} 
+}

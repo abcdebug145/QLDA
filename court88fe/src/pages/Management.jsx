@@ -6,69 +6,6 @@ import Product from "../components/ui/Product";
 import RevenueChart from "../components/ui/RevenueChart";
 import axios from 'axios';
 
-const PRODUCTS = [
-  {
-    image: "/yonex-grip.png",
-    name: "Quấn cán vợt Yonex",
-    price: "40.000",
-    stock: 10,
-  },
-  {
-    image: "/yonex-tape.png",
-    name: "Cốt cán Yonex",
-    price: "150.000",
-    stock: 100,
-  },
-  {
-    image: "/yonex-socks.png",
-    name: "Tất Yonex",
-    price: "80.000",
-    stock: 30,
-  },
-  {
-    image: "/yonex-bag.png",
-    name: "Túi Yonex",
-    price: "495.000",
-    stock: 7,
-  },
-  {
-    image: "/yonex-shuttle.png",
-    name: "Cầu Yonex",
-    price: "1.050.000",
-    stock: 2,
-  },
-  {
-    image: "/bg65ti.png",
-    name: "BG 65 Titanium",
-    price: "150.000",
-    stock: 15,
-  },
-  {
-    image: "/exbolt65.png",
-    name: "Exbolt 65",
-    price: "200.000",
-    stock: 12,
-  },
-  {
-    image: "/bg80power.png",
-    name: "BG 80 Power",
-    price: "200.000",
-    stock: 20,
-  },
-  {
-    image: "/bg80.png",
-    name: "BG 80",
-    price: "180.000",
-    stock: 25,
-  },
-  {
-    image: "/bg66u.png",
-    name: "BG 66 Ultimax",
-    price: "180.000",
-    stock: 13,
-  },
-];
-
 const roleColor = {
   "OWNER": { bg: "#ffeaea", color: "#d33" },
   "MANAGER": { bg: "#fff9d6", color: "#b89c00" },
@@ -103,6 +40,8 @@ const Management = () => {
   const [newProduct, setNewProduct] = useState({ name: '', price: '', stock: '' });
   const [newProductImage, setNewProductImage] = useState(null);
   const [productLoading, setProductLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [editingProduct, setEditingProduct] = useState(null);
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -131,6 +70,19 @@ const Management = () => {
       setFilteredEmployees(filtered);
     }
   }, [selectedRole, employees]);
+
+  // Lấy danh sách sản phẩm từ backend
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await axios.get('http://localhost:8080/api/products');
+        if (res.data.success) setProducts(res.data.data);
+      } catch (err) {
+        setProducts([]);
+      }
+    };
+    fetchProducts();
+  }, []);
 
   const handleAddEmployee = async (e) => {
     e.preventDefault();
@@ -197,6 +149,7 @@ const Management = () => {
     }
   };
 
+  // Thêm sản phẩm
   const handleAddProduct = async (e) => {
     e.preventDefault();
     setProductLoading(true);
@@ -210,13 +163,107 @@ const Management = () => {
       if (newProductImage) {
         formData.append('image', newProductImage);
       }
-      await axios.post('http://localhost:8080/api/products', formData);
+      const addRes = await axios.post('http://localhost:8080/api/products', formData);
+      console.log('Add product response:', addRes.data);
       setShowAddProduct(false);
       setNewProduct({ name: '', price: '', stock: '' });
       setNewProductImage(null);
-      // TODO: reload lại danh sách sản phẩm nếu cần
+
+      // Hàm chờ ảnh load thành công
+      const waitForImage = (src, timeout = 2000, interval = 150) => {
+        return new Promise((resolve, reject) => {
+          const start = Date.now();
+          function check() {
+            const img = new window.Image();
+            img.onload = () => resolve(true);
+            img.onerror = () => {
+              if (Date.now() - start > timeout) reject(new Error('Timeout'));
+              else setTimeout(check, interval);
+            };
+            img.src = src + (src.includes('?') ? '&' : '?') + 'v=' + Date.now();
+          }
+          check();
+        });
+      };
+
+      // Sau khi thêm, lấy lại danh sách và poll ảnh mới nhất
+      const reloadProducts = async () => {
+        const res = await axios.get('http://localhost:8080/api/products');
+        if (res.data.success) {
+          // Nếu có sản phẩm mới, poll ảnh trước khi setProducts
+          if (res.data.data.length > 0) {
+            const last = res.data.data[res.data.data.length - 1];
+            const imgSrc = last.image ? last.image + (last.image.includes('?') ? '&' : '?') + 'v=' + Date.now() : null;
+            if (imgSrc) {
+              try {
+                await waitForImage(imgSrc);
+                setProducts(res.data.data);
+                console.log('Products after add:', res.data.data);
+                console.log('Image src of last product:', last.image);
+              } catch {
+                // Nếu timeout vẫn setProducts để tránh treo UI
+                setProducts(res.data.data);
+                console.log('Timeout wait image, still update products.');
+              }
+            } else {
+              setProducts(res.data.data);
+            }
+          } else {
+            setProducts(res.data.data);
+          }
+        }
+      };
+      await reloadProducts();
     } catch (err) {
       alert('Có lỗi khi thêm sản phẩm!');
+    } finally {
+      setProductLoading(false);
+    }
+  };
+
+  // Xóa sản phẩm
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa sản phẩm này?')) return;
+    try {
+      await axios.delete(`http://localhost:8080/api/products/${id}`);
+      const res = await axios.get('http://localhost:8080/api/products');
+      if (res.data.success) setProducts(res.data.data);
+    } catch {
+      alert('Xóa thất bại!');
+    }
+  };
+
+  // Sửa sản phẩm
+  const handleEditProduct = (product) => {
+    setEditingProduct(product);
+    setShowAddProduct(true);
+    setNewProduct({ name: product.name, price: product.price, stock: product.stock });
+    setNewProductImage(null);
+  };
+
+  // Cập nhật sản phẩm
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+    setProductLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('product', JSON.stringify({
+        name: newProduct.name,
+        price: Number(newProduct.price),
+        stock: Number(newProduct.stock)
+      }));
+      if (newProductImage) {
+        formData.append('image', newProductImage);
+      }
+      await axios.put(`http://localhost:8080/api/products/${editingProduct.id}`, formData);
+      setShowAddProduct(false);
+      setEditingProduct(null);
+      setNewProduct({ name: '', price: '', stock: '' });
+      setNewProductImage(null);
+      const res = await axios.get('http://localhost:8080/api/products');
+      if (res.data.success) setProducts(res.data.data);
+    } catch {
+      alert('Cập nhật thất bại!');
     } finally {
       setProductLoading(false);
     }
@@ -531,24 +578,52 @@ const Management = () => {
               </h1>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                 gap: 32,
                 justifyItems: 'center',
                 alignItems: 'start',
                 padding: '0 24px'
               }}>
-                {PRODUCTS.map((p, idx) => (
-                  <Product
-                    key={p.name}
-                    image={p.image}
-                    name={p.name}
-                    price={p.price}
-                    isAdmin={true}
-                  />
+                {products.map((p) => (
+                  <div key={p.id} style={{ position: 'relative' }}>
+                    <Product
+                      image={p.image}
+                      name={p.name}
+                      price={p.price}
+                      isAdmin={true}
+                      stock={p.stock}
+                      onChangeStock={async (newStock) => {
+                        if (newStock < 0) return;
+                        if (newStock === 0) {
+                          await handleDeleteProduct(p.id);
+                        } else {
+                          try {
+                            const formData = new FormData();
+                            formData.append('product', JSON.stringify({
+                              name: p.name,
+                              price: p.price,
+                              stock: newStock,
+                              image: p.image
+                            }));
+                            await axios.put(`http://localhost:8080/api/products/${p.id}`, formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+                            const res = await axios.get('http://localhost:8080/api/products');
+                            if (res.data.success) setProducts(res.data.data);
+                          } catch {
+                            alert('Cập nhật tồn kho thất bại!');
+                          }
+                        }
+                      }}
+                      onDelete={async () => {
+                        await handleDeleteProduct(p.id);
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
               <button
-                onClick={() => setShowAddProduct(true)}
+                onClick={() => { setShowAddProduct(true); setEditingProduct(null); setNewProduct({ name: '', price: '', stock: '' }); setNewProductImage(null); }}
                 style={{
                   position: 'fixed',
                   bottom: 32,
@@ -582,8 +657,8 @@ const Management = () => {
                   zIndex: 2000
                 }}>
                   <div style={{ background: '#fff', borderRadius: 16, padding: 32, minWidth: 350, boxShadow: '0 2px 16px rgba(0,0,0,0.12)' }}>
-                    <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 22 }}>Thêm sản phẩm mới</h2>
-                    <form onSubmit={handleAddProduct}>
+                    <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 22 }}>{editingProduct ? 'Cập nhật sản phẩm' : 'Thêm sản phẩm mới'}</h2>
+                    <form onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct}>
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ fontWeight: 500 }}>Tên sản phẩm</label>
                         <input
@@ -622,14 +697,13 @@ const Management = () => {
                           type="file"
                           accept="image/*"
                           onChange={e => setNewProductImage(e.target.files[0])}
-                          required
                           style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
                         />
                       </div>
                       <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
                         <button
                           type="button"
-                          onClick={() => setShowAddProduct(false)}
+                          onClick={() => { setShowAddProduct(false); setEditingProduct(null); }}
                           style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', fontSize: 16, cursor: 'pointer' }}
                           disabled={productLoading}
                         >
@@ -640,7 +714,7 @@ const Management = () => {
                           style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#1976d2', color: '#fff', fontSize: 16, cursor: 'pointer' }}
                           disabled={productLoading}
                         >
-                          {productLoading ? 'Đang lưu...' : 'Thêm sản phẩm'}
+                          {productLoading ? 'Đang lưu...' : (editingProduct ? 'Cập nhật' : 'Thêm sản phẩm')}
                         </button>
                       </div>
                     </form>
